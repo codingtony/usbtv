@@ -1,5 +1,16 @@
-usbtv-y := usbtv-core.o \
-	usbtv-video.o \
-	usbtv-audio.o
+TARGET = usbtv
+KDIR=/lib/modules/$(shell uname -r)/build
+PWD := $(shell pwd)
 
-obj-$(CONFIG_VIDEO_USBTV) += usbtv.o
+obj-m := usbtv.o
+
+usbtv-objs :=  usbtv-video.o usbtv-audio.o usbtv-core.o
+
+
+default:
+	make -C $(KDIR) M=$(PWD) modules
+install :
+	make -C $(KDIR) M=$(PWD) modules_install
+clean:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+
