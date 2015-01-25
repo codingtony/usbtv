@@ -28,8 +28,6 @@
  * GNU General Public License ("GPL").
  */
 
-#include <linux/module.h>
-
 #include "usbtv.h"
 
 int usbtv_set_regs(struct usbtv *usbtv, const u16 regs[][2], int size)
@@ -100,6 +98,8 @@ usbtv_audio_fail:
 	usbtv_video_free(usbtv);
 
 usbtv_video_fail:
+	usb_set_intfdata(intf, NULL);
+	usb_put_dev(usbtv->udev);
 	kfree(usbtv);
 
 	return ret;
@@ -108,6 +108,7 @@ usbtv_video_fail:
 static void usbtv_disconnect(struct usb_interface *intf)
 {
 	struct usbtv *usbtv = usb_get_intfdata(intf);
+
 	usb_set_intfdata(intf, NULL);
 
 	if (!usbtv)
@@ -124,7 +125,7 @@ static void usbtv_disconnect(struct usb_interface *intf)
 	v4l2_device_put(&usbtv->v4l2_dev);
 }
 
-struct usb_device_id usbtv_id_table[] = {
+static struct usb_device_id usbtv_id_table[] = {
 	{ USB_DEVICE(0x1b71, 0x3002) },
 	{}
 };
@@ -134,7 +135,7 @@ MODULE_AUTHOR("Lubomir Rintel, Federico Simoncelli");
 MODULE_DESCRIPTION("Fushicai USBTV007 Audio-Video Grabber Driver");
 MODULE_LICENSE("Dual BSD/GPL");
 
-struct usb_driver usbtv_usb_driver = {
+static struct usb_driver usbtv_usb_driver = {
 	.name = "usbtv",
 	.id_table = usbtv_id_table,
 	.probe = usbtv_probe,

@@ -36,13 +36,13 @@ static struct snd_pcm_hardware snd_usbtv_digital_hw = {
 		SNDRV_PCM_INFO_BLOCK_TRANSFER |
 		SNDRV_PCM_INFO_MMAP_VALID,
 	.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	.rates = SNDRV_PCM_RATE_CONTINUOUS | SNDRV_PCM_RATE_KNOT,
+	.rates = SNDRV_PCM_RATE_48000,
 	.rate_min = 48000,
 	.rate_max = 48000,
 	.channels_min = 2,
 	.channels_max = 2,
-	.period_bytes_min = 64,
-	.period_bytes_max = 12544,
+	.period_bytes_min = 11059,
+	.period_bytes_max = 13516,
 	.periods_min = 2,
 	.periods_max = 98,
 	.buffer_bytes_max = 62720 * 8, /* value in usbaudio.c */
@@ -240,7 +240,11 @@ err_alloc_urb:
 static int usbtv_audio_stop(struct usbtv *chip)
 {
 	static const u16 setup[][2] = {
-/*		{ USBTV_BASE + 0x00a2, 0x0013 }, */
+	/* The original windows driver sometimes sends also:
+	 *   { USBTV_BASE + 0x00a2, 0x0013 }
+	 * but it seems useless and its real effects are untested at
+	 * the moment.
+	 */
 		{ USBTV_BASE + 0x027d, 0x0000 },
 		{ USBTV_BASE + 0x0280, 0x0010 },
 		{ USBTV_BASE + 0x0282, 0x0010 },
@@ -307,6 +311,7 @@ static int snd_usbtv_card_trigger(struct snd_pcm_substream *substream, int cmd)
 static snd_pcm_uframes_t snd_usbtv_pointer(struct snd_pcm_substream *substream)
 {
 	struct usbtv *chip = snd_pcm_substream_chip(substream);
+
 	return chip->snd_buffer_pos;
 }
 
@@ -330,14 +335,13 @@ int usbtv_audio_init(struct usbtv *usbtv)
 	INIT_WORK(&usbtv->snd_trigger, snd_usbtv_trigger);
 	atomic_set(&usbtv->snd_stream, 0);
 
-	rv = snd_card_create(SNDRV_DEFAULT_IDX1, "usbtv", THIS_MODULE, 0,
-		&card);
+	rv = snd_card_new(&usbtv->udev->dev, SNDRV_DEFAULT_IDX1, "usbtv",
+		THIS_MODULE, 0, &card);
 	if (rv < 0)
 		return rv;
 
-	strncpy(card->driver, usbtv->dev->driver->name,
-		sizeof(card->driver) - 1);
-	strncpy(card->shortname, "usbtv", sizeof(card->shortname) - 1);
+	strlcpy(card->driver, usbtv->dev->driver->name, sizeof(card->driver));
+	strlcpy(card->shortname, "usbtv", sizeof(card->shortname));
 	snprintf(card->longname, sizeof(card->longname),
 		"USBTV Audio at bus %d device %d", usbtv->udev->bus->busnum,
 		usbtv->udev->devnum);
@@ -350,7 +354,7 @@ int usbtv_audio_init(struct usbtv *usbtv)
 	if (rv < 0)
 		goto err;
 
-	strncpy(pcm->name, "USBTV Audio Input", sizeof(pcm->name) - 1);
+	strlcpy(pcm->name, "USBTV Audio Input", sizeof(pcm->name));
 	pcm->info_flags = 0;
 	pcm->private_data = usbtv;
 

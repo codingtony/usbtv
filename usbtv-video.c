@@ -253,7 +253,7 @@ static int usbtv_setup_capture(struct usbtv *usbtv)
  * 720 pixel lines, as the chunk is 240 words long, which is 480 pixels.
  * Therefore, we break down the chunk into two halves before copyting,
  * so that we can interleave a line if needed. */
-static void usbtv_chunk_to_vbuf(u32 *frame, u32 *src, int chunk_no, int odd)
+static void usbtv_chunk_to_vbuf(u32 *frame, __be32 *src, int chunk_no, int odd)
 {
 	int half;
 
@@ -263,6 +263,7 @@ static void usbtv_chunk_to_vbuf(u32 *frame, u32 *src, int chunk_no, int odd)
 		int part_index = (line * 2 + !odd) * 3 + (part_no % 3);
 
 		u32 *dst = &frame[part_index * USBTV_CHUNK/2];
+
 		memcpy(dst, src, USBTV_CHUNK/2 * sizeof(*src));
 		src += USBTV_CHUNK/2;
 	}
@@ -271,7 +272,7 @@ static void usbtv_chunk_to_vbuf(u32 *frame, u32 *src, int chunk_no, int odd)
 /* Called for each 256-byte image chunk.
  * First word identifies the chunk, followed by 240 words of image
  * data and padding. */
-static void usbtv_image_chunk(struct usbtv *usbtv, u32 *chunk)
+static void usbtv_image_chunk(struct usbtv *usbtv, __be32 *chunk)
 {
 	int frame_id, odd, chunk_no;
 	u32 *frame;
@@ -362,7 +363,7 @@ static void usbtv_iso_cb(struct urb *ip)
 
 		for (offset = 0; USBTV_CHUNK_SIZE * offset < size; offset++)
 			usbtv_image_chunk(usbtv,
-				(u32 *)&data[USBTV_CHUNK_SIZE * offset]);
+				(__be32 *)&data[USBTV_CHUNK_SIZE * offset]);
 	}
 
 resubmit:
@@ -407,6 +408,7 @@ static void usbtv_stop(struct usbtv *usbtv)
 	/* Cancel running transfers. */
 	for (i = 0; i < USBTV_ISOC_TRANSFERS; i++) {
 		struct urb *ip = usbtv->isoc_urbs[i];
+
 		if (ip == NULL)
 			continue;
 		usb_kill_urb(ip);
@@ -560,10 +562,11 @@ static int usbtv_g_input(struct file *file, void *priv, unsigned int *i)
 static int usbtv_s_input(struct file *file, void *priv, unsigned int i)
 {
 	struct usbtv *usbtv = video_drvdata(file);
+
 	return usbtv_select_input(usbtv, i);
 }
 
-struct v4l2_ioctl_ops usbtv_ioctl_ops = {
+static struct v4l2_ioctl_ops usbtv_ioctl_ops = {
 	.vidioc_querycap = usbtv_querycap,
 	.vidioc_enum_input = usbtv_enum_input,
 	.vidioc_enum_fmt_vid_cap = usbtv_enum_fmt_vid_cap,
@@ -585,7 +588,7 @@ struct v4l2_ioctl_ops usbtv_ioctl_ops = {
 	.vidioc_streamoff = vb2_ioctl_streamoff,
 };
 
-struct v4l2_file_operations usbtv_fops = {
+static struct v4l2_file_operations usbtv_fops = {
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = video_ioctl2,
 	.mmap = vb2_fop_mmap,
@@ -635,18 +638,15 @@ static int usbtv_start_streaming(struct vb2_queue *vq, unsigned int count)
 	return usbtv_start(usbtv);
 }
 
-static int usbtv_stop_streaming(struct vb2_queue *vq)
+static void usbtv_stop_streaming(struct vb2_queue *vq)
 {
 	struct usbtv *usbtv = vb2_get_drv_priv(vq);
 
-	if (usbtv->udev == NULL)
-		return -ENODEV;
-
-	usbtv_stop(usbtv);
-	return 0;
+	if (usbtv->udev)
+		usbtv_stop(usbtv);
 }
 
-struct vb2_ops usbtv_vb2_ops = {
+static struct vb2_ops usbtv_vb2_ops = {
 	.queue_setup = usbtv_queue_setup,
 	.buf_queue = usbtv_buf_queue,
 	.start_streaming = usbtv_start_streaming,
@@ -680,7 +680,7 @@ int usbtv_video_init(struct usbtv *usbtv)
 	usbtv->vb2q.buf_struct_size = sizeof(struct usbtv_buf);
 	usbtv->vb2q.ops = &usbtv_vb2_ops;
 	usbtv->vb2q.mem_ops = &vb2_vmalloc_memops;
-	usbtv->vb2q.timestamp_type = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+	usbtv->vb2q.timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 	usbtv->vb2q.lock = &usbtv->vb2q_lock;
 	ret = vb2_queue_init(&usbtv->vb2q);
 	if (ret < 0) {
@@ -705,7 +705,6 @@ int usbtv_video_init(struct usbtv *usbtv)
 	usbtv->vdev.tvnorms = USBTV_TV_STD;
 	usbtv->vdev.queue = &usbtv->vb2q;
 	usbtv->vdev.lock = &usbtv->v4l2_lock;
-	set_bit(V4L2_FL_USE_FH_PRIO, &usbtv->vdev.flags);
 	video_set_drvdata(&usbtv->vdev, usbtv);
 	ret = video_register_device(&usbtv->vdev, VFL_TYPE_GRABBER, -1);
 	if (ret < 0) {
